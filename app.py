@@ -104,16 +104,17 @@ def process_csv(csv_path, pdf_template_path, output_dir):
             formatted_date = format_date_mmddyyyy(str(raw_date))
 
         data = {
-            'Date': formatted_date,
-            'Appt Time': row.get('Appt Time', ''),
-            'Patient Name': patient_name,
-            'DOB': row.get('DOB', ''),
-            'CC': row.get('CC', ''),
-            'Primary Ins': row.get('Primary Ins', ''),
-            'Sec/Sup Ins': row.get('Sec/Sup Ins', ''),
-            'Brief History': row.get('Brief History', ''),
-            'Medications': meds
-        }
+    'Date': str(formatted_date),
+    'Appt Time': str(row.get('Appt Time', '')),
+    'Patient Name': str(patient_name),
+    'DOB': str(row.get('DOB', '')),
+    'CC': str(row.get('CC', '')),
+    'Primary Ins': str(row.get('Primary Ins', '')),
+    'Sec/Sup Ins': str(row.get('Sec/Sup Ins', '')),
+    'Brief History': str(row.get('Brief History', '')),
+    'Medications': meds  # already cleaned above
+}
+
 
         output_pdf = os.path.join(output_dir, f"{safe_name}.pdf")
         overlay_data(pdf_template_path, output_pdf, data)
