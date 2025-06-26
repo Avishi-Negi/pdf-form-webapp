@@ -2,3 +2,5 @@ Flask
 pdfrw
 reportlab
 gunicorn
+pandas
+openpyxl
