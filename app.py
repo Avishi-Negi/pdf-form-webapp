@@ -1,11 +1,12 @@
 from flask import Flask, render_template, request, send_file
-import os, shutil, csv, tempfile, re, zipfile
+import os, shutil, tempfile, re, zipfile
 from datetime import datetime
 from pdfrw import PdfReader, PdfWriter, PageMerge
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.utils import simpleSplit
 from werkzeug.utils import secure_filename
+import pandas as pd  # For Excel support
 
 app = Flask(__name__)
 UPLOAD_FOLDER = 'uploads'
@@ -58,51 +59,64 @@ def overlay_data(input_pdf, output_pdf, data_dict):
         PageMerge(page).add(ol).render()
     PdfWriter(output_pdf, trailer=template).write()
 
+def format_date_mmddyyyy(raw_date):
+    # Try different formats to catch various user inputs
+    for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d-%m-%Y", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(str(raw_date), fmt).strftime("%m.%d.%Y")
+        except:
+            continue
+    return str(raw_date)  # fallback
+
 def process_csv(csv_path, pdf_template_path, output_dir):
-    with open(csv_path, newline='', encoding='utf-8') as f:
-        reader = list(csv.DictReader(f))
+    ext = os.path.splitext(csv_path)[1].lower()
 
-        def parse_time(row):
-            t = row.get('Appt Time', '').strip()
-            try:
-                return datetime.strptime(t, "%I:%M %p")
-            except:
-                return datetime.min
+    # Read Excel or CSV
+    if ext == '.csv':
+        df = pd.read_csv(csv_path)
+    elif ext in ['.xlsx', '.xls']:
+        df = pd.read_excel(csv_path)
+    else:
+        raise ValueError("❌ Unsupported file format. Use .csv or .xlsx")
 
-        reader.sort(key=parse_time)
+    records = df.to_dict(orient='records')
 
-        for row in reader:
-            meds = []
-            if row.get('Medications'):
-                for part in row['Medications'].split(';'):
-                    if '|' in part:
-                        d, n, q, r = part.split('|')
-                        meds.append({'date': d.strip(), 'name': n.strip(), 'qty': q.strip(), 'refill': r.strip()})
+    def parse_time(row):
+        t = row.get('Appt Time', '').strip()
+        try:
+            return datetime.strptime(t, "%I:%M %p")
+        except:
+            return datetime.min
 
-            patient_name = row.get('Patient Name', 'unknown')
-            safe_name = re.sub(r'[\\/*?:"<>|,]', '', patient_name).replace(' ', '_')
+    records.sort(key=parse_time)
 
-            # Format the Date as MM.DD.YYYY
-            raw_date = row.get('\ufeffDate', '') or row.get('Date', '')
-            try:
-                formatted_date = datetime.strptime(raw_date, "%Y-%m-%d").strftime("%m.%d.%Y")
-            except:
-                formatted_date = raw_date  # Fallback
+    for row in records:
+        meds = []
+        if row.get('Medications'):
+            for part in str(row['Medications']).split(';'):
+                if '|' in part:
+                    d, n, q, r = part.split('|')
+                    meds.append({'date': d.strip(), 'name': n.strip(), 'qty': q.strip(), 'refill': r.strip()})
 
-            data = {
-                'Date': formatted_date,
-                'Appt Time': row.get('Appt Time', ''),
-                'Patient Name': patient_name,
-                'DOB': row.get('DOB', ''),
-                'CC': row.get('CC', ''),
-                'Primary Ins': row.get('Primary Ins', ''),
-                'Sec/Sup Ins': row.get('Sec/Sup Ins', ''),
-                'Brief History': row.get('Brief History', ''),
-                'Medications': meds
-            }
+        patient_name = row.get('Patient Name', 'unknown')
+        safe_name = re.sub(r'[\\/*?:"<>|,]', '', patient_name).replace(' ', '_')
 
-            output_pdf = os.path.join(output_dir, f"{safe_name}.pdf")
-            overlay_data(pdf_template_path, output_pdf, data)
+        formatted_date = format_date_mmddyyyy(row.get('\ufeffDate', '') or row.get('Date', ''))
+
+        data = {
+            'Date': formatted_date,
+            'Appt Time': row.get('Appt Time', ''),
+            'Patient Name': patient_name,
+            'DOB': row.get('DOB', ''),
+            'CC': row.get('CC', ''),
+            'Primary Ins': row.get('Primary Ins', ''),
+            'Sec/Sup Ins': row.get('Sec/Sup Ins', ''),
+            'Brief History': row.get('Brief History', ''),
+            'Medications': meds
+        }
+
+        output_pdf = os.path.join(output_dir, f"{safe_name}.pdf")
+        overlay_data(pdf_template_path, output_pdf, data)
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -112,24 +126,20 @@ def index():
             pdf_template = request.files['pdf_template']
 
             if not csv_file or not pdf_template:
-                return "❌ Missing files. Please upload both CSV and PDF.", 400
+                return "❌ Missing files. Please upload both CSV/XLSX and PDF.", 400
 
-            # Save uploaded files
             csv_path = os.path.join(UPLOAD_FOLDER, secure_filename(csv_file.filename))
             pdf_path = os.path.join(UPLOAD_FOLDER, secure_filename(pdf_template.filename))
             csv_file.save(csv_path)
             pdf_template.save(pdf_path)
 
-            # Output directory
             output_dir = os.path.join(tempfile.gettempdir(), "pdf_output")
             if os.path.exists(output_dir):
                 shutil.rmtree(output_dir)
             os.makedirs(output_dir)
 
-            # Generate PDFs
             process_csv(csv_path, pdf_path, output_dir)
 
-            # Zip the generated PDFs
             zip_path = os.path.join(UPLOAD_FOLDER, "filled_forms.zip")
             with zipfile.ZipFile(zip_path, 'w') as zipf:
                 for fname in os.listdir(output_dir):
@@ -146,5 +156,5 @@ def index():
     return render_template('index.html')
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))  # Render requires PORT from env
+    port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
