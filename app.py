@@ -60,7 +60,6 @@ def overlay_data(input_pdf, output_pdf, data_dict):
     PdfWriter(output_pdf, trailer=template).write()
 
 def format_date_mmddyyyy(raw_date):
-    # Try different formats to catch various user inputs
     for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d-%m-%Y", "%m/%d/%Y"):
         try:
             return datetime.strptime(str(raw_date), fmt).strftime("%m.%d.%Y")
@@ -70,8 +69,6 @@ def format_date_mmddyyyy(raw_date):
 
 def process_csv(csv_path, pdf_template_path, output_dir):
     ext = os.path.splitext(csv_path)[1].lower()
-
-    # Read Excel or CSV
     if ext == '.csv':
         df = pd.read_csv(csv_path)
     elif ext in ['.xlsx', '.xls']:
@@ -82,7 +79,7 @@ def process_csv(csv_path, pdf_template_path, output_dir):
     records = df.to_dict(orient='records')
 
     def parse_time(row):
-        t = row.get('Appt Time', '').strip()
+        t = str(row.get('Appt Time', '')).strip()
         try:
             return datetime.strptime(t, "%I:%M %p")
         except:
@@ -101,7 +98,12 @@ def process_csv(csv_path, pdf_template_path, output_dir):
         patient_name = row.get('Patient Name', 'unknown')
         safe_name = re.sub(r'[\\/*?:"<>|,]', '', patient_name).replace(' ', '_')
 
-        formatted_date = format_date_mmddyyyy(row.get('\ufeffDate', '') or row.get('Date', ''))
+        raw_date = row.get('\ufeffDate', '') or row.get('Date', '')
+        if pd.isna(raw_date):
+            formatted_date = ''
+        else:
+            raw_date_str = str(raw_date)
+            formatted_date = format_date_mmddyyyy(raw_date_str)
 
         data = {
             'Date': formatted_date,
