@@ -6,7 +6,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.utils import simpleSplit
 from werkzeug.utils import secure_filename
-import pandas as pd  # For Excel support
+import pandas as pd
 
 app = Flask(__name__)
 UPLOAD_FOLDER = 'uploads'
@@ -18,27 +18,27 @@ def overlay_data(input_pdf, output_pdf, data_dict):
 
     c.setFont("Helvetica", 10)
     if 'Date' in data_dict:
-        c.drawString(175, 730, str(data_dict['Date']))
+        c.drawString(175, 730, data_dict['Date'])
     if 'Appt Time' in data_dict:
         c.setFont("Helvetica", 6.5)
-        c.drawString(309, 730, str(data_dict['Appt Time'])[:40])
+        c.drawString(309, 730, data_dict['Appt Time'][:40])
     c.setFont("Helvetica", 10)
     if 'Patient Name' in data_dict:
-        c.drawString(450, 730, str(data_dict['Patient Name']))
+        c.drawString(450, 730, data_dict['Patient Name'])
     if 'DOB' in data_dict:
-        c.drawString(370, 670, str(data_dict['DOB']))
+        c.drawString(370, 670, data_dict['DOB'])
     if 'CC' in data_dict:
-        c.drawString(130, 620, str(data_dict['CC'])[:50])
+        c.drawString(130, 620, data_dict['CC'][:50])
     c.setFont("Helvetica", 6.5)
     if 'Primary Ins' in data_dict:
-        lines = simpleSplit(str(data_dict['Primary Ins']), "Helvetica", 8, 150)
+        lines = simpleSplit(data_dict['Primary Ins'], "Helvetica", 8, 150)
         for i, line in enumerate(lines[:2]):
             c.drawString(73, 680 - i * 13, line)
     if 'Sec/Sup Ins' in data_dict:
-        c.drawString(80, 650, str(data_dict['Sec/Sup Ins']))
+        c.drawString(80, 650, data_dict['Sec/Sup Ins'])
     if 'Brief History' in data_dict:
         c.setFont("Helvetica", 9)
-        lines = simpleSplit(str(data_dict['Brief History']), "Helvetica", 9, 450)
+        lines = simpleSplit(data_dict['Brief History'], "Helvetica", 9, 450)
         for i, line in enumerate(lines[:5]):
             c.drawString(75, 570 - i * 13, line)
 
@@ -51,20 +51,14 @@ def overlay_data(input_pdf, output_pdf, data_dict):
 
     try:
         template = PdfReader(input_pdf)
-    except:
-        raise ValueError("⚠️ Unable to read the uploaded PDF. Please re-save it using 'Print to PDF' and try again.")
-
-    overlay = PdfReader(temp_overlay)
-    for page, ol in zip(template.pages, overlay.pages):
-        PageMerge(page).add(ol).render()
-    PdfWriter(output_pdf, trailer=template).write()
+        overlay = PdfReader(temp_overlay)
+        for page, ol in zip(template.pages, overlay.pages):
+            PageMerge(page).add(ol).render()
+        PdfWriter(output_pdf, trailer=template).write()
+    except Exception as e:
+        raise ValueError(f"⚠️ PDF Error: {str(e)}. Please upload a PDF saved using 'Print to PDF' option.")
 
 def format_date_mmddyyyy(raw_date):
-    # Safely handle Timestamp, string, or NaN values
-    if isinstance(raw_date, pd.Timestamp):
-        return raw_date.strftime("%m.%d.%Y")
-    if pd.isna(raw_date):
-        return ''
     for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d-%m-%Y", "%m/%d/%Y"):
         try:
             return datetime.strptime(str(raw_date), fmt).strftime("%m.%d.%Y")
@@ -79,7 +73,7 @@ def process_csv(csv_path, pdf_template_path, output_dir):
     elif ext in ['.xlsx', '.xls']:
         df = pd.read_excel(csv_path)
     else:
-        raise ValueError("❌ Unsupported file format. Use .csv or .xlsx")
+        raise ValueError("❌ Unsupported file format. Please upload CSV or XLSX only.")
 
     records = df.to_dict(orient='records')
 
@@ -104,7 +98,10 @@ def process_csv(csv_path, pdf_template_path, output_dir):
         safe_name = re.sub(r'[\\/*?:"<>|,]', '', patient_name).replace(' ', '_')
 
         raw_date = row.get('\ufeffDate', '') or row.get('Date', '')
-        formatted_date = format_date_mmddyyyy(raw_date)
+        if pd.isna(raw_date):
+            formatted_date = ''
+        else:
+            formatted_date = format_date_mmddyyyy(str(raw_date))
 
         data = {
             'Date': formatted_date,
@@ -159,5 +156,5 @@ def index():
     return render_template('index.html')
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.get("PORT", 10000))  # For Render
     app.run(host='0.0.0.0', port=port)
