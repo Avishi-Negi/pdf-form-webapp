@@ -61,8 +61,6 @@ def overlay_data(input_pdf, output_pdf, data_dict):
 def process_csv(csv_path, pdf_template_path, output_dir):
     with open(csv_path, newline='', encoding='utf-8') as f:
         reader = list(csv.DictReader(f))
-        reader = [row for row in reader if row.get('Service Location', '').strip() != "EPSI - Crismon"]
-
         def parse_time(row):
             t = row.get('Appt Time', '').strip()
             try: return datetime.strptime(t, "%I:%M %p")
@@ -94,6 +92,7 @@ def process_csv(csv_path, pdf_template_path, output_dir):
 
             output_pdf = os.path.join(output_dir, f"{safe_name}.pdf")
             overlay_data(pdf_template_path, output_pdf, data)
+
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
