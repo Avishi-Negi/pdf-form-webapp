@@ -61,10 +61,13 @@ def overlay_data(input_pdf, output_pdf, data_dict):
 def process_csv(csv_path, pdf_template_path, output_dir):
     with open(csv_path, newline='', encoding='utf-8') as f:
         reader = list(csv.DictReader(f))
+
         def parse_time(row):
             t = row.get('Appt Time', '').strip()
-            try: return datetime.strptime(t, "%I:%M %p")
-            except: return datetime.min
+            try:
+                return datetime.strptime(t, "%I:%M %p")
+            except:
+                return datetime.min
 
         reader.sort(key=parse_time)
 
@@ -78,8 +81,16 @@ def process_csv(csv_path, pdf_template_path, output_dir):
 
             patient_name = row.get('Patient Name', 'unknown')
             safe_name = re.sub(r'[\\/*?:"<>|,]', '', patient_name).replace(' ', '_')
+
+            # Format the Date as MM.DD.YYYY
+            raw_date = row.get('\ufeffDate', '') or row.get('Date', '')
+            try:
+                formatted_date = datetime.strptime(raw_date, "%Y-%m-%d").strftime("%m.%d.%Y")
+            except:
+                formatted_date = raw_date  # Fallback
+
             data = {
-                'Date': row.get('\ufeffDate', '') or row.get('Date', ''),
+                'Date': formatted_date,
                 'Appt Time': row.get('Appt Time', ''),
                 'Patient Name': patient_name,
                 'DOB': row.get('DOB', ''),
@@ -92,7 +103,6 @@ def process_csv(csv_path, pdf_template_path, output_dir):
 
             output_pdf = os.path.join(output_dir, f"{safe_name}.pdf")
             overlay_data(pdf_template_path, output_pdf, data)
-
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -129,11 +139,12 @@ def index():
             return send_file(zip_path, as_attachment=True)
 
         except Exception as e:
+            import traceback
+            print(traceback.format_exc())
             return f"<h3 style='color:red;'>❌ Error: {str(e)}</h3>"
 
     return render_template('index.html')
 
-
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))  # Render uses PORT env variable
+    port = int(os.environ.get("PORT", 10000))  # Render requires PORT from env
     app.run(host='0.0.0.0', port=port)
