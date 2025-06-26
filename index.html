@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PDF Form Filler</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f2f2f2; padding: 30px; }
+        .container { background: #fff; padding: 25px; border-radius: 8px; width: 400px; margin: auto; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        input, button { width: 100%; padding: 10px; margin-top: 10px; }
+        button { background-color: #28a745; color: white; border: none; border-radius: 5px; }
+        h2 { text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>PDF Form Generator</h2>
+        <form method="POST" enctype="multipart/form-data">
+            <label>Select CSV File:</label>
+            <input type="file" name="csv_file" accept=".csv" required>
+
+            <label>Select PDF Template:</label>
+            <input type="file" name="pdf_template" accept=".pdf" required>
+
+            <button type="submit">Generate PDFs</button>
+        </form>
+    </div>
+</body>
+</html>
