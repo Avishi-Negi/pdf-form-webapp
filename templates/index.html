@@ -14,15 +14,13 @@
     <div class="container">
         <h2>PDF Form Generator</h2>
         <form method="POST" enctype="multipart/form-data">
-            <label>Select CSV File:</label>
-            <input type="file" name="csv_file" accept=".csv,.xlsx,.xls" required>
+    <label>Select CSV or Excel File:</label>
+    <input type="file" name="csv_file" accept=".csv,.xlsx" required>
 
+    <label>Select PDF Template:</label>
+    <input type="file" name="pdf_template" accept=".pdf" required>
 
-            <label>Select PDF Template:</label>
-            <input type="file" name="pdf_template" accept=".pdf" required>
+    <button type="submit">Generate PDFs</button>
+</form>
 
-            <button type="submit">Generate PDFs</button>
-        </form>
-    </div>
-</body>
 </html>
