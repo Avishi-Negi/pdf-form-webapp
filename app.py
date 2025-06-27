@@ -6,22 +6,28 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.utils import simpleSplit
 from werkzeug.utils import secure_filename
-import pandas as pd  # Excel support added
+import pandas as pd
 
 app = Flask(__name__)
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Convert date to MM.DD.YYYY format
-def format_date_mmddyyyy(raw_date):
-    if not raw_date:
+def format_date_mmddyyyy(value):
+    try:
+        if pd.isna(value) or value == '':
+            return ''
+        if isinstance(value, pd.Timestamp):
+            return value.strftime("%m.%d.%Y")
+        if isinstance(value, float):
+            return ''
+        for fmt in ("%d.%m.%Y", "%Y-%m-%d", "%d-%m-%Y", "%m/%d/%Y"):
+            try:
+                return datetime.strptime(str(value), fmt).strftime("%m.%d.%Y")
+            except:
+                continue
+        return str(value)
+    except:
         return ''
-    for fmt in ("%d.%m.%Y", "%Y-%m-%d", "%d-%m-%Y", "%m/%d/%Y"):
-        try:
-            return datetime.strptime(str(raw_date), fmt).strftime("%m.%d.%Y")
-        except:
-            continue
-    return str(raw_date)
 
 def overlay_data(input_pdf, output_pdf, data_dict):
     temp_overlay = os.path.join(tempfile.gettempdir(), "temp_overlay.pdf")
@@ -32,24 +38,24 @@ def overlay_data(input_pdf, output_pdf, data_dict):
         c.drawString(175, 730, data_dict['Date'])
     if 'Appt Time' in data_dict:
         c.setFont("Helvetica", 6.5)
-        c.drawString(309, 730, data_dict['Appt Time'][:40])
+        c.drawString(309, 730, str(data_dict['Appt Time'])[:40])
     c.setFont("Helvetica", 10)
     if 'Patient Name' in data_dict:
-        c.drawString(450, 730, data_dict['Patient Name'])
+        c.drawString(450, 730, str(data_dict['Patient Name']))
     if 'DOB' in data_dict:
         c.drawString(370, 670, data_dict['DOB'])
     if 'CC' in data_dict:
-        c.drawString(130, 620, data_dict['CC'][:50])
+        c.drawString(130, 620, str(data_dict['CC'])[:50])
     c.setFont("Helvetica", 6.5)
     if 'Primary Ins' in data_dict:
-        lines = simpleSplit(data_dict['Primary Ins'], "Helvetica", 8, 150)
+        lines = simpleSplit(str(data_dict['Primary Ins']), "Helvetica", 8, 150)
         for i, line in enumerate(lines[:2]):
             c.drawString(73, 680 - i * 13, line)
     if 'Sec/Sup Ins' in data_dict:
-        c.drawString(80, 650, data_dict['Sec/Sup Ins'])
+        c.drawString(80, 650, str(data_dict['Sec/Sup Ins']))
     if 'Brief History' in data_dict:
         c.setFont("Helvetica", 9)
-        lines = simpleSplit(data_dict['Brief History'], "Helvetica", 9, 450)
+        lines = simpleSplit(str(data_dict['Brief History']), "Helvetica", 9, 450)
         for i, line in enumerate(lines[:5]):
             c.drawString(75, 570 - i * 13, line)
 
@@ -70,14 +76,14 @@ def overlay_data(input_pdf, output_pdf, data_dict):
         PageMerge(page).add(ol).render()
     PdfWriter(output_pdf, trailer=template).write()
 
-def process_csv_or_excel(file_path, pdf_template_path, output_dir):
-    ext = os.path.splitext(file_path)[1].lower()
+def process_csv(csv_path, pdf_template_path, output_dir):
+    ext = os.path.splitext(csv_path)[1].lower()
     if ext == '.csv':
-        df = pd.read_csv(file_path)
+        df = pd.read_csv(csv_path)
     elif ext in ['.xlsx', '.xls']:
-        df = pd.read_excel(file_path)
+        df = pd.read_excel(csv_path)
     else:
-        raise ValueError("❌ Unsupported file type. Only .csv, .xls, .xlsx are supported.")
+        raise ValueError("❌ Unsupported file format. Use .csv or .xlsx")
 
     records = df.to_dict(orient='records')
 
@@ -95,23 +101,20 @@ def process_csv_or_excel(file_path, pdf_template_path, output_dir):
         if row.get('Medications'):
             for part in str(row['Medications']).split(';'):
                 if '|' in part:
-                    d, n, q, r = part.split('|')
-                    meds.append({'date': d.strip(), 'name': n.strip(), 'qty': q.strip(), 'refill': r.strip()})
+                    try:
+                        d, n, q, r = part.split('|')
+                        meds.append({'date': d.strip(), 'name': n.strip(), 'qty': q.strip(), 'refill': r.strip()})
+                    except:
+                        continue
 
-        patient_name = row.get('Patient Name', 'unknown')
+        patient_name = str(row.get('Patient Name', 'unknown'))
         safe_name = re.sub(r'[\\/*?:"<>|,]', '', patient_name).replace(' ', '_')
 
-        raw_date = row.get('\ufeffDate', '') or row.get('Date', '')
-        raw_dob = row.get('DOB', '')
-
-        formatted_date = format_date_mmddyyyy(raw_date)
-        formatted_dob = format_date_mmddyyyy(raw_dob)
-
         data = {
-            'Date': formatted_date,
+            'Date': format_date_mmddyyyy(row.get('Date') or row.get('\ufeffDate')),
             'Appt Time': row.get('Appt Time', ''),
             'Patient Name': patient_name,
-            'DOB': formatted_dob,
+            'DOB': format_date_mmddyyyy(row.get('DOB')),
             'CC': row.get('CC', ''),
             'Primary Ins': row.get('Primary Ins', ''),
             'Sec/Sup Ins': row.get('Sec/Sup Ins', ''),
@@ -130,7 +133,7 @@ def index():
             pdf_template = request.files['pdf_template']
 
             if not csv_file or not pdf_template:
-                return "❌ Missing files. Please upload both CSV/Excel and PDF.", 400
+                return "❌ Missing files. Please upload both CSV/XLSX and PDF.", 400
 
             csv_path = os.path.join(UPLOAD_FOLDER, secure_filename(csv_file.filename))
             pdf_path = os.path.join(UPLOAD_FOLDER, secure_filename(pdf_template.filename))
@@ -142,7 +145,7 @@ def index():
                 shutil.rmtree(output_dir)
             os.makedirs(output_dir)
 
-            process_csv_or_excel(csv_path, pdf_path, output_dir)
+            process_csv(csv_path, pdf_path, output_dir)
 
             zip_path = os.path.join(UPLOAD_FOLDER, "filled_forms.zip")
             with zipfile.ZipFile(zip_path, 'w') as zipf:
@@ -160,5 +163,5 @@ def index():
     return render_template('index.html')
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.get("PORT", 10000))  # Render uses PORT
     app.run(host='0.0.0.0', port=port)
